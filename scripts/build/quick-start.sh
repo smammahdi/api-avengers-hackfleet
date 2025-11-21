@@ -14,8 +14,8 @@ YELLOW='\033[1;33m'
 NC='\033[0m'
 
 echo -e "${BLUE}=========================================${NC}"
-echo -e "${BLUE}  CareForAll Donation Platform${NC}"
-echo -e "${BLUE}  Quick Start (Docker)${NC}"
+echo -e "${BLUE}  HackFleet Donation Platform${NC}"
+echo -e "${BLUE}  Quick Start (Docker - Local Build)${NC}"
 echo -e "${BLUE}=========================================${NC}"
 echo ""
 
@@ -43,12 +43,12 @@ kill_port() {
 
 # Stop and clean up existing containers
 echo -e "${BLUE}Step 1/4: Stopping existing containers...${NC}"
-docker-compose --profile full down 2>/dev/null || true
+docker-compose down 2>/dev/null || true
 echo ""
 
 # Clean up ports
 echo -e "${BLUE}Step 2/4: Cleaning up ports...${NC}"
-ports=(3001 8080 8081 8082 8083 8084 8085 8086 8087 8761 8888 5432 5433 5434 5435 6379 5672 15672 9411 9090 3000 3100)
+ports=(3001 8080 8081 8082 8083 8084 8085 8086 8087 8088 8089 8091 8761 8888 5432 5433 5434 5435 5436 27017 6379 5672 15672 9411 9090 3000 9200 9300 5601 9600)
 for port in "${ports[@]}"; do
     kill_port $port &
 done
@@ -56,14 +56,15 @@ wait
 echo -e "${GREEN}  Ports cleaned${NC}"
 echo ""
 
-# Build all services
-echo -e "${BLUE}Step 3/4: Building all services with Docker...${NC}"
-docker-compose --profile full build
+# Build all services locally
+echo -e "${BLUE}Step 3/4: Building all services locally with Docker...${NC}"
+echo -e "${YELLOW}  This will build images from local source code...${NC}"
+docker-compose build
 echo ""
 
 # Start all services
 echo -e "${BLUE}Step 4/4: Starting Docker containers...${NC}"
-docker-compose --profile full up -d
+docker-compose up -d
 
 echo ""
 echo -e "${BLUE}Waiting for services to be healthy...${NC}"
@@ -75,15 +76,17 @@ echo ""
 echo -e "${GREEN}Checking service health:${NC}"
 
 services=(
-  "hf-eureka-server:8761"
-  "hf-config-server:8888"
-  "hf-api-gateway:8080"
-  "hf-campaign-service:8082"
-  "hf-donation-service:8085"
-  "hf-payment-service:8086"
-  "hf-analytics-service:8087"
-  "hf-auth-service:8089"
-  "hf-notification-service:8088"
+  "hackfleet-eureka-server:8761"
+  "hackfleet-config-server:8888"
+  "hackfleet-api-gateway:8080"
+  "hackfleet-campaign-service:8082"
+  "hackfleet-donation-service:8085"
+  "hackfleet-payment-service:8086"
+  "hackfleet-banking-service:8091"
+  "hackfleet-analytics-service:8087"
+  "hackfleet-auth-service:8089"
+  "hackfleet-notification-service:8088"
+  "hackfleet-frontend:3001"
 )
 
 for service in "${services[@]}"
@@ -91,7 +94,7 @@ do
   name="${service%%:*}"
   port="${service##*:}"
 
-  if [ "$name" = "frontend" ]; then
+  if [ "$name" = "hackfleet-frontend" ]; then
     # Check frontend with simple HTTP request
     if curl -s "http://localhost:$port" > /dev/null 2>&1; then
       echo -e "  ${GREEN}✓${NC} $name (port $port)"

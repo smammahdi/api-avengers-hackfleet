@@ -249,15 +249,27 @@ cd api-avengers-mock
 
 ### 2. Start All Services
 
-**Option A: Quick Start Script (Recommended)**
+**Option A: Quick Start Script (Recommended) ⚡**
+
+This script builds all services **locally from source** and starts them:
+
 ```bash
+chmod +x scripts/build/quick-start.sh
 ./scripts/build/quick-start.sh
 ```
 
+The script will:
+- ✓ Stop any existing containers
+- ✓ Clean up ports
+- ✓ Build all services locally from Dockerfiles
+- ✓ Start all containers
+- ✓ Health check all services
+
 **Option B: Manual Docker Compose**
+
 ```bash
-# Build and start all containers
-docker-compose --profile full up -d
+# Build and start all containers locally
+docker-compose up --build -d
 
 # View logs
 docker-compose logs -f
@@ -269,14 +281,13 @@ docker-compose ps
 ### 3. Wait for Services to Start
 
 Services start in this order:
-1. Databases (PostgreSQL, MongoDB)
-2. Eureka Server
-3. Config Server
-4. RabbitMQ
-5. Zipkin, Prometheus, ELK Stack
-6. Business Microservices (hf-* prefix)
+1. Databases (PostgreSQL, MongoDB, Redis)
+2. Infrastructure (RabbitMQ, Eureka, Config Server)
+3. Monitoring (Zipkin, Prometheus, Grafana, ELK Stack)
+4. Business Microservices (hackfleet-* prefix)
+5. Frontend
 
-**Estimated startup time**: 3-5 minutes
+**Estimated startup time**: 3-5 minutes (first build may take longer)
 
 ### 4. Verify Health
 
