@@ -1,0 +1,307 @@
+# System Design Solution for CareForAll Donation Platform
+
+## 📋 Problem Breakdown and Solution Approach
+
+### **Problem 1: Duplicate Payment Charges (Idempotency Failure)**
+
+**What went wrong:**
+- Payment provider retried webhooks multiple times
+- Each webhook retry triggered a new charge to the donor
+- No mechanism to identify and ignore duplicate requests
+
+**Solution Approach:**
+
+**Idempotency Key Implementation:**
+- Every webhook from the payment gateway should contain a unique identifier (webhook_id or event_id)
+- Before processing any webhook, check if this ID has been processed before
+- Create a dedicated "webhook_processing" table that stores:
+  - Webhook ID (as primary key)
+  - Processing status (pending/completed/failed)
+  - Timestamp
+  - Response sent back
+
+**Processing Flow:**
+1. Webhook arrives → Extract unique ID
+2. Check database: Has this ID been processed?
+3. If yes → Return the same response stored earlier (idempotent response)
+4. If no → Process the webhook, store the result, then return response
+5. Use database constraints (unique index) to prevent race conditions
+
+**Additional Safety Measures:**
+- Implement request fingerprinting: Create a hash from (timestamp + transaction_id + amount + event_type)
+- Set expiry for idempotency records (e.g., 7 days) to prevent table bloat
+- Use distributed locks (Redis) for high-concurrency scenarios
+
+---
+
+### **Problem 2: Lost Donations (Partial Transaction Failure)**
+
+**What went wrong:**
+- Pledge was saved to database successfully
+- System crashed before publishing the event to other services
+- Campaign totals never got updated
+- Donation appeared lost to the user
+
+**Solution Approach:**
+
+**Transactional Outbox Pattern:**
+- Never rely on "save data then publish event" as two separate operations
+- Instead, use a single database transaction that:
+  1. Saves the pledge record
+  2. Saves an "outbox_event" record in the same database
+
+**Implementation Strategy:**
+1. Create an `outbox_events` table in each service that needs to publish events
+2. When creating a pledge:
+   - BEGIN TRANSACTION
+   - INSERT into pledges table
+   - INSERT into outbox_events table (event_type: "PledgeCreated", status: "pending")
+   - COMMIT TRANSACTION
+3. Have a separate background processor that:
+   - Polls outbox_events table every few seconds
+   - Publishes pending events to message queue
+   - Marks events as "published" after successful delivery
+   - Retries failed events with exponential backoff
+
+**Why this works:**
+- Database transaction guarantees both pledge and event are saved atomically
+- Even if system crashes after transaction, the event is persisted
+- Background processor will eventually publish the event
+- No data loss possible
+
+---
+
+### **Problem 3: Out-of-Order Webhook Processing**
+
+**What went wrong:**
+- Payment gateway sent "CAPTURED" webhook before "AUTHORIZED"
+- System blindly updated status from CAPTURED → AUTHORIZED (backward)
+- Campaign totals became corrupted
+- Some campaigns showed negative amounts
+
+**Solution Approach:**
+
+**State Machine Implementation:**
+- Define valid payment states: INITIATED → AUTHORIZED → CAPTURED → COMPLETED
+- Define allowed transitions between states
+- Never allow backward transitions
+
+**Processing Strategy:**
+1. **Version-based updates:**
+   - Add version number to payment records
+   - Only update if current version matches expected version
+   - Reject updates that would move to an invalid state
+
+2. **Event sequencing:**
+   - Store webhook sequence number from payment gateway
+   - Process webhooks in order even if received out of order
+   - Queue out-of-order webhooks for later processing
+
+3. **State validation logic:**
+   ```
+   Current State: CAPTURED
+   Incoming Event: AUTHORIZED
+   Action: REJECT (log warning, investigate)
+   
+   Current State: AUTHORIZED  
+   Incoming Event: CAPTURED
+   Action: ACCEPT (valid transition)
+   ```
+
+4. **Compensating transactions:**
+   - If invalid state detected, trigger compensation workflow
+   - Reconcile with payment gateway to get current truth
+   - Fix local state based on gateway's authoritative data
+
+---
+
+### **Problem 4: No Monitoring or Observability**
+
+**What went wrong:**
+- No alerts when duplicates occurred
+- No way to trace which pledges failed
+- Blind debugging through scattered logs
+- No metrics on system health
+
+**Solution Approach:**
+
+**Three Pillars of Observability:**
+
+**1. Metrics (What's happening at system level):**
+- Track business metrics:
+  - Pledges per minute
+  - Average donation amount
+  - Failed payment rate
+  - Campaign creation rate
+- Track system metrics:
+  - API response times
+  - Database connection pool usage
+  - Message queue depth
+  - Service error rates
+
+**2. Logging (What happened in detail):**
+- Structured logging with correlation IDs
+- Every request gets unique trace_id that flows through all services
+- Log levels: ERROR for failures, WARN for retries, INFO for state changes
+- Centralized log aggregation using ELK stack
+
+**3. Distributed Tracing (How request flowed through system):**
+- Implement OpenTelemetry in all services
+- Trace complete donation flow:
+  - User clicks donate → API Gateway → Pledge Service → Payment Service → Webhook processing → Campaign update
+- Identify bottlenecks and failures in the flow
+- Set up alerts for anomalies
+
+**Alert Strategy:**
+- Duplicate charge detected → Immediate alert to on-call
+- Payment success rate < 95% → Warning alert
+- Database CPU > 80% → Scale alert
+- Any negative campaign total → Critical business alert
+
+---
+
+### **Problem 5: Database Overload from Real-time Calculations**
+
+**What went wrong:**
+- Every request to view campaign total triggered full recalculation
+- Aggregating thousands of pledges on every request
+- Database CPU hit 100%
+- System became unresponsive
+
+**Solution Approach:**
+
+**CQRS (Command Query Responsibility Segregation):**
+
+**Write Side (Commands):**
+- Handle pledge creation normally
+- Publish events when pledges complete
+
+**Read Side (Queries):**
+- Maintain pre-calculated totals in separate tables/cache
+- Update these totals asynchronously via event handlers
+- Never calculate on-the-fly for read requests
+
+**Implementation Strategy:**
+
+1. **Denormalized read models:**
+   - Create `campaign_analytics` table
+   - Store pre-calculated: total_raised, donor_count, last_updated
+   - Update via event handlers, not during read requests
+
+2. **Caching layer:**
+   - Use Redis to cache campaign totals
+   - TTL of 30 seconds (acceptable staleness)
+   - Warm cache proactively for active campaigns
+
+3. **Materialized views:**
+   - Database-level materialized views for complex analytics
+   - Refresh periodically (every minute)
+   - Serve reads from views, not raw tables
+
+4. **Event-driven updates:**
+   - When pledge completes → Publish "PledgeCompleted" event
+   - Analytics service subscribes → Updates read model
+   - Cache invalidation happens automatically
+
+---
+
+### **Problem 6: Overall Architecture Issues**
+
+**What went wrong:**
+- Monolithic failure points
+- No service boundaries
+- No resilience patterns
+- No scalability plan
+
+**Solution Approach:**
+
+**Microservice Architecture with Proper Boundaries:**
+
+1. **Service Decomposition:**
+   - **User Service**: Authentication, user profiles
+   - **Campaign Service**: Campaign CRUD, rules
+   - **Pledge Service**: Donation intents, pledge lifecycle
+   - **Payment Service**: Payment gateway integration
+   - **Analytics Service**: Read models, reporting
+   - **Notification Service**: Email/SMS for receipts
+   - **Admin Service**: Moderation, monitoring
+
+2. **Resilience Patterns:**
+   - **Circuit Breakers**: Prevent cascade failures
+   - **Retry with Exponential Backoff**: Handle transient failures
+   - **Bulkheads**: Isolate critical resources
+   - **Timeouts**: Prevent indefinite waiting
+   - **Fallbacks**: Graceful degradation
+
+3. **API Gateway Pattern:**
+   - Single entry point for all clients
+   - Rate limiting per client
+   - Request routing to appropriate services
+   - Authentication/Authorization at edge
+   - Response caching for common requests
+
+4. **Event-Driven Communication:**
+   - Services communicate via events, not direct calls
+   - Loose coupling between services
+   - Natural retry mechanism via message queues
+   - Event sourcing for audit trail
+
+5. **Data Management:**
+   - Each service owns its database (no shared databases)
+   - Data consistency via eventual consistency
+   - Saga pattern for distributed transactions
+   - Event sourcing for critical flows
+
+---
+
+
+
+
+
+ users (
+    id BIGSERIAL PRIMARY KEY,
+    user_name VARCHAR(100) UNIQUE NOT NULL,
+    email VARCHAR(255) UNIQUE NOT NULL,
+    password VARCHAR(255), -- Nullable for guest users who register later
+    role VARCHAR(50) DEFAULT 'USER' -- 'USER' or 'ADMIN'
+);
+
+ donations (
+    id UUID PRIMARY KEY,
+    amount DECIMAL(19, 2) NOT NULL, -- Assumed default currency
+    status VARCHAR(20) NOT NULL, -- CREATED, AUTHORIZED, CAPTURED
+    transaction_id VARCHAR(255),    -- From Payment Gateway
+
+    -- Link to User (or just email if guest)
+    donor_email VARCHAR(255) NOT NULL, 
+    user_id BIGINT,                 -- FK to users table (Nullable)
+
+    campaign_id BIGINT NOT NULL,
+
+    -- The Magic Version Column
+    version BIGINT DEFAULT 0        -- @Version in Spring Boot
+);
+
+-- Idempotency (Keep this!)
+CREATE TABLE processed_webhooks (
+    transaction_id VARCHAR(255) PRIMARY KEY
+);
+
+-- Outbox (Keep this!)
+CREATE TABLE outbox_events (
+    id UUID PRIMARY KEY,
+    aggregate_id VARCHAR(255),
+    event_type VARCHAR(50),
+    payload JSONB,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE campaigns (
+    id BIGSERIAL PRIMARY KEY,
+    title VARCHAR(255),
+    -- Removed description
+
+    -- Read Model: Updated via RabbitMQ events
+    current_amount DECIMAL(19, 2) DEFAULT 0.00,
+    target_amount DECIMAL(19, 2),
+    status VARCHAR(20) -- ACTIVE/COMPLETED
+);

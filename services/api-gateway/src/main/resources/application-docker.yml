@@ -1,0 +1,22 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: api-gateway
+
+eureka:
+  client:
+    service-url:
+      defaultZone: ${EUREKA_CLIENT_SERVICEURL_DEFAULTZONE:http://eureka-server:8761/eureka/}
+
+jwt:
+  secret: ${JWT_SECRET:mySecretKeyForJWTTokenGenerationAndValidation12345678}
+
+# Zipkin Configuration for Docker
+management.zipkin.tracing.endpoint: ${ZIPKIN_BASE_URL:http://zipkin:9411}/api/v2/spans
+
+logging:
+  level:
+    com.careforall.gateway: INFO
+    org.springframework.cloud.gateway: INFO

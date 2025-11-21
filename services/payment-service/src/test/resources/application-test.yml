@@ -1,0 +1,27 @@
+spring:
+  application:
+    name: hf-payment-service-test
+
+  datasource:
+    url: jdbc:h2:mem:testdb
+    driver-class-name: org.h2.Driver
+    username: sa
+    password: password
+
+  jpa:
+    database-platform: org.hibernate.dialect.H2Dialect
+    hibernate:
+      ddl-auto: create-drop
+    show-sql: false
+
+  rabbitmq:
+    host: localhost
+    port: 5672
+
+eureka:
+  client:
+    enabled: false
+
+logging:
+  level:
+    com.careforall.payment: DEBUG

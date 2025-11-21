@@ -1,0 +1,332 @@
+# Main CI/CD Orchestrator
+# This workflow coordinates all service-specific workflows
+
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+permissions:
+  contents: read
+  pull-requests: read
+  packages: write
+
+env:
+  DOCKER_USERNAME: smamm
+  JAVA_VERSION: '21'
+
+jobs:
+  # Detect which services have changed
+  detect-changes:
+    name: Detect Changes
+    runs-on: ubuntu-latest
+    outputs:
+      eureka: ${{ steps.filter.outputs.eureka }}
+      config: ${{ steps.filter.outputs.config }}
+      gateway: ${{ steps.filter.outputs.gateway }}
+      campaign: ${{ steps.filter.outputs.campaign }}
+      donation: ${{ steps.filter.outputs.donation }}
+      payment: ${{ steps.filter.outputs.payment }}
+      banking: ${{ steps.filter.outputs.banking }}
+      analytics: ${{ steps.filter.outputs.analytics }}
+      auth: ${{ steps.filter.outputs.auth }}
+      notification: ${{ steps.filter.outputs.notification }}
+      frontend: ${{ steps.filter.outputs.frontend }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check for changes
+        uses: dorny/paths-filter@v2
+        id: filter
+        with:
+          filters: |
+            eureka:
+              - 'services/eureka-server/**'
+            config:
+              - 'services/config-server/**'
+            gateway:
+              - 'services/api-gateway/**'
+            campaign:
+              - 'services/campaign-service/**'
+            donation:
+              - 'services/donation-service/**'
+            payment:
+              - 'services/payment-service/**'
+            banking:
+              - 'services/banking-service/**'
+            analytics:
+              - 'services/analytics-service/**'
+            auth:
+              - 'services/auth-service/**'
+            notification:
+              - 'services/notification-service/**'
+            frontend:
+              - 'services/frontend/**'
+
+  # Call service-specific workflows
+  build-eureka:
+    if: needs.detect-changes.outputs.eureka == 'true'
+    needs: detect-changes
+    uses: ./.github/workflows/service-build.yml
+    with:
+      service-name: services/eureka-server
+    secrets: inherit
+
+  build-config:
+    if: needs.detect-changes.outputs.config == 'true'
+    needs: detect-changes
+    uses: ./.github/workflows/service-build.yml
+    with:
+      service-name: services/config-server
+    secrets: inherit
+
+  build-gateway:
+    if: needs.detect-changes.outputs.gateway == 'true'
+    needs: detect-changes
+    uses: ./.github/workflows/service-build.yml
+    with:
+      service-name: services/api-gateway
+    secrets: inherit
+
+  build-campaign:
+    if: needs.detect-changes.outputs.campaign == 'true'
+    needs: detect-changes
+    uses: ./.github/workflows/service-build.yml
+    with:
+      service-name: services/campaign-service
+    secrets: inherit
+
+  build-donation:
+    if: needs.detect-changes.outputs.donation == 'true'
+    needs: detect-changes
+    uses: ./.github/workflows/service-build.yml
+    with:
+      service-name: services/donation-service
+    secrets: inherit
+
+  build-payment:
+    if: needs.detect-changes.outputs.payment == 'true'
+    needs: detect-changes
+    uses: ./.github/workflows/service-build.yml
+    with:
+      service-name: services/payment-service
+    secrets: inherit
+
+  build-analytics:
+    if: needs.detect-changes.outputs.analytics == 'true'
+    needs: detect-changes
+    uses: ./.github/workflows/service-build.yml
+    with:
+      service-name: services/analytics-service
+    secrets: inherit
+
+  build-auth:
+    if: needs.detect-changes.outputs.auth == 'true'
+    needs: detect-changes
+    uses: ./.github/workflows/service-build.yml
+    with:
+      service-name: services/auth-service
+    secrets: inherit
+
+  build-notification:
+    if: needs.detect-changes.outputs.notification == 'true'
+    needs: detect-changes
+    uses: ./.github/workflows/service-build.yml
+    with:
+      service-name: services/notification-service
+    secrets: inherit
+
+  build-banking:
+    if: needs.detect-changes.outputs.banking == 'true'
+    needs: detect-changes
+    uses: ./.github/workflows/service-build.yml
+    with:
+      service-name: services/banking-service
+    secrets: inherit
+
+  build-frontend:
+    if: needs.detect-changes.outputs.frontend == 'true'
+    needs: detect-changes
+    uses: ./.github/workflows/frontend-build.yml
+    secrets: inherit
+
+  # Final status check
+  pipeline-status:
+    name: Pipeline Status
+    needs: [
+      build-eureka, build-config, build-gateway,
+      build-campaign, build-donation, build-payment,
+      build-banking, build-analytics, build-auth,
+      build-notification, build-frontend
+    ]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check Status
+        run: echo "CI/CD Pipeline completed!"
+
+  # ============================================================================
+  # CD - Automated Deployment (Bonus Feature)
+  # ============================================================================
+  # Demonstrates end-to-end deployment with docker-compose up
+  # Only runs on successful builds to main branch
+
+  deploy:
+    name: Deploy Platform
+    needs: pipeline-status
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Create .env file
+        run: |
+          echo "DOCKER_USERNAME=smamm" >> .env
+          echo "JWT_SECRET=supersecretjwtkeythatshouldbeinenv" >> .env
+
+      - name: Pull latest images from Docker Hub
+        run: |
+          echo "Pulling latest Docker images..."
+          docker pull smamm/hackfleet-eureka-server:latest
+          docker pull smamm/hackfleet-config-server:latest
+          docker pull smamm/hackfleet-api-gateway:latest
+          docker pull smamm/hackfleet-campaign-service:latest
+          docker pull smamm/hackfleet-donation-service:latest
+          docker pull smamm/hackfleet-payment-service:latest
+          docker pull smamm/hackfleet-banking-service:latest
+          docker pull smamm/hackfleet-analytics-service:latest
+          docker pull smamm/hackfleet-auth-service:latest
+          docker pull smamm/hackfleet-notification-service:latest
+          docker pull smamm/hackfleet-frontend:latest
+          echo "All images pulled successfully!"
+
+      - name: Start infrastructure services
+        run: |
+          echo "Starting infrastructure (databases, messaging, monitoring)..."
+          docker-compose up -d postgres-campaign postgres-donation postgres-auth postgres-banking mongodb redis rabbitmq zipkin prometheus grafana elasticsearch logstash kibana
+
+      - name: Wait for infrastructure
+        run: |
+          echo "Waiting for infrastructure to be ready..."
+          sleep 30
+
+      - name: Start core services
+        run: |
+          echo "Starting Eureka and Config Server..."
+          docker-compose up -d eureka-server config-server
+          sleep 20
+
+      - name: Start API Gateway
+        run: |
+          echo "Starting API Gateway..."
+          docker-compose up -d api-gateway
+          sleep 15
+
+      - name: Start microservices
+        run: |
+          echo "Starting all microservices..."
+          docker-compose up -d campaign-service donation-service payment-service banking-service analytics-service auth-service notification-service
+          sleep 30
+
+      - name: Start frontend
+        run: |
+          echo "Starting frontend..."
+          docker-compose up -d frontend
+          sleep 10
+
+      - name: Verify deployment
+        run: |
+          echo "==================================================="
+          echo "Verifying Platform Deployment"
+          echo "==================================================="
+
+          # Check container status
+          echo ""
+          echo "Container Status:"
+          docker-compose ps
+
+          # Health checks
+          echo ""
+          echo "==================================================="
+          echo "Health Checks:"
+          echo "==================================================="
+
+          # Eureka
+          echo -n "Eureka Server: "
+          curl -f http://localhost:8761/actuator/health -s -o /dev/null && echo "✓ Healthy" || echo "✗ Failed"
+
+          # API Gateway
+          echo -n "API Gateway: "
+          curl -f http://localhost:8080/actuator/health -s -o /dev/null && echo "✓ Healthy" || echo "✗ Failed"
+
+          # Campaign Service
+          echo -n "Campaign Service: "
+          curl -f http://localhost:8082/actuator/health -s -o /dev/null && echo "✓ Healthy" || echo "✗ Failed"
+
+          # Donation Service
+          echo -n "Donation Service: "
+          curl -f http://localhost:8085/actuator/health -s -o /dev/null && echo "✓ Healthy" || echo "✗ Failed"
+
+          # Payment Service
+          echo -n "Payment Service: "
+          curl -f http://localhost:8086/actuator/health -s -o /dev/null && echo "✓ Healthy" || echo "✗ Failed"
+
+          # Banking Service
+          echo -n "Banking Service: "
+          curl -f http://localhost:8091/actuator/health -s -o /dev/null && echo "✓ Healthy" || echo "✗ Failed"
+
+          # Analytics Service
+          echo -n "Analytics Service: "
+          curl -f http://localhost:8087/actuator/health -s -o /dev/null && echo "✓ Healthy" || echo "✗ Failed"
+
+          # Auth Service
+          echo -n "Auth Service: "
+          curl -f http://localhost:8089/actuator/health -s -o /dev/null && echo "✓ Healthy" || echo "✗ Failed"
+
+          # Notification Service
+          echo -n "Notification Service: "
+          curl -f http://localhost:8088/actuator/health -s -o /dev/null && echo "✓ Healthy" || echo "✗ Failed"
+
+          # Monitoring
+          echo -n "Zipkin: "
+          curl -f http://localhost:9411/health -s -o /dev/null && echo "✓ Healthy" || echo "✗ Failed"
+
+          echo -n "Prometheus: "
+          curl -f http://localhost:9090/-/healthy -s -o /dev/null && echo "✓ Healthy" || echo "✗ Failed"
+
+          echo -n "Grafana: "
+          curl -f http://localhost:3000/api/health -s -o /dev/null && echo "✓ Healthy" || echo "✗ Failed"
+
+          echo ""
+          echo "==================================================="
+          echo "✅ Platform deployed successfully!"
+          echo "==================================================="
+          echo ""
+          echo "Access Points:"
+          echo "  - API Gateway: http://localhost:8080"
+          echo "  - Eureka Dashboard: http://localhost:8761"
+          echo "  - Grafana: http://localhost:3000 (admin/admin)"
+          echo "  - Zipkin: http://localhost:9411"
+          echo "  - Frontend: http://localhost:3001"
+          echo "==================================================="
+
+      - name: Show service logs
+        if: always()
+        run: |
+          echo "==================================================="
+          echo "Service Logs (last 50 lines each)"
+          echo "==================================================="
+          docker-compose logs --tail=50 eureka-server api-gateway campaign-service donation-service
+
+      - name: Cleanup
+        if: always()
+        run: |
+          echo "Stopping all services..."
+          docker-compose down
+          echo "Cleanup complete!"

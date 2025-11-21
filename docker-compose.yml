@@ -1,0 +1,571 @@
+version: '3.8'
+
+# ==============================================================================
+# HACKFLEET DONATION PLATFORM - DOCKER COMPOSE
+# ==============================================================================
+# Team: HackFleet (API Avengers)
+# Hackathon: Microservice Architecture Challenge 2025
+#
+# Services:
+#   - Infrastructure: Eureka, Config Server, API Gateway, RabbitMQ
+#   - Microservices: Campaign, Donation, Payment, Banking, Analytics, Auth, Notification
+#   - Databases: PostgreSQL (campaign, donation, auth, banking) + MongoDB (analytics) + Redis (caching)
+#   - Monitoring: Zipkin (tracing), Prometheus (metrics), Grafana (dashboards)
+#   - Logging: ELK Stack (Elasticsearch, Logstash, Kibana)
+#
+# Quick Start:
+#   docker-compose up --build -d
+#
+# Access Points:
+#   - API Gateway: http://localhost:8080
+#   - Eureka Dashboard: http://localhost:8761
+#   - Grafana: http://localhost:3000 (admin/admin)
+#   - Prometheus: http://localhost:9090
+#   - Zipkin: http://localhost:9411
+#   - Kibana: http://localhost:5601
+#   - RabbitMQ Management: http://localhost:15672 (guest/guest)
+#   - Redis: localhost:6379
+# ==============================================================================
+
+networks:
+  hackfleet-network:
+    driver: bridge
+
+volumes:
+  hackfleet-campaign-db-data:
+  hackfleet-donation-db-data:
+  hackfleet-auth-db-data:
+  hackfleet-banking-db-data:
+  hackfleet-mongodb-data:
+  hackfleet-redis-data:
+  hackfleet-prometheus-data:
+  hackfleet-grafana-data:
+  hackfleet-elasticsearch-data:
+  
+services:
+  # ============================================================================
+  # DATABASES
+  # ============================================================================
+
+  hackfleet-postgres-campaign:
+    image: postgres:15-alpine
+    container_name: hackfleet-postgres-campaign
+    environment:
+      POSTGRES_DB: campaigndb
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5433:5432"
+    volumes:
+      - hackfleet-campaign-db-data:/var/lib/postgresql/data
+    networks:
+      - hackfleet-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  hackfleet-postgres-donation:
+    image: postgres:15-alpine
+    container_name: hackfleet-postgres-donation
+    environment:
+      POSTGRES_DB: donationdb
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5434:5432"
+    volumes:
+      - hackfleet-donation-db-data:/var/lib/postgresql/data
+    networks:
+      - hackfleet-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  hackfleet-postgres-auth:
+    image: postgres:15-alpine
+    container_name: hackfleet-postgres-auth
+    environment:
+      POSTGRES_DB: authdb
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5435:5432"
+    volumes:
+      - hackfleet-auth-db-data:/var/lib/postgresql/data
+    networks:
+      - hackfleet-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  hackfleet-postgres-banking:
+    image: postgres:15-alpine
+    container_name: hackfleet-postgres-banking
+    environment:
+      POSTGRES_DB: bankingdb
+      POSTGRES_USER: careforall
+      POSTGRES_PASSWORD: careforall123
+    ports:
+      - "5436:5432"
+    volumes:
+      - hackfleet-banking-db-data:/var/lib/postgresql/data
+    networks:
+      - hackfleet-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U careforall"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  hackfleet-mongodb:
+    image: mongo:7.0
+    container_name: hackfleet-mongodb
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: admin
+      MONGO_INITDB_DATABASE: analyticsdb
+    ports:
+      - "27017:27017"
+    volumes:
+      - hackfleet-mongodb-data:/data/db
+    networks:
+      - hackfleet-network
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  hackfleet-redis:
+    image: redis:7-alpine
+    container_name: hackfleet-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - hackfleet-redis-data:/data
+    command: redis-server --appendonly yes
+    networks:
+      - hackfleet-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # ============================================================================
+  # INFRASTRUCTURE
+  # ============================================================================
+
+  hackfleet-eureka-server:
+    build:
+      context: ./services/eureka-server
+      dockerfile: Dockerfile
+    container_name: hackfleet-eureka-server
+    ports:
+      - "8761:8761"
+    networks:
+      - hackfleet-network
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8761/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    restart: unless-stopped
+
+  hackfleet-config-server:
+    build:
+      context: ./services/config-server
+      dockerfile: Dockerfile
+    container_name: hackfleet-config-server
+    ports:
+      - "8888:8888"
+    networks:
+      - hackfleet-network
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+      - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://hackfleet-eureka-server:8761/eureka/
+    depends_on:
+      - hackfleet-eureka-server
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8888/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    restart: unless-stopped
+
+  hackfleet-rabbitmq:
+    image: rabbitmq:3.12-management-alpine
+    container_name: hackfleet-rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    networks:
+      - hackfleet-network
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    restart: unless-stopped
+
+  hackfleet-api-gateway:
+    build:
+      context: ./services/api-gateway
+      dockerfile: Dockerfile
+    container_name: hackfleet-api-gateway
+    ports:
+      - "8080:8080"
+    networks:
+      - hackfleet-network
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+      - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://hackfleet-eureka-server:8761/eureka/
+      - MANAGEMENT_ZIPKIN_TRACING_ENDPOINT=http://hackfleet-zipkin:9411/api/v2/spans
+    depends_on:
+      - hackfleet-eureka-server
+      - hackfleet-zipkin
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    restart: unless-stopped
+
+  # ============================================================================
+  # MICROSERVICES
+  # ============================================================================
+
+  hackfleet-campaign-service:
+    build:
+      context: ./services/campaign-service
+      dockerfile: Dockerfile
+    container_name: hackfleet-campaign-service
+    ports:
+      - "8082:8082"
+    networks:
+      - hackfleet-network
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://hackfleet-postgres-campaign:5432/campaigndb
+      - SPRING_RABBITMQ_HOST=hackfleet-rabbitmq
+      - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://hackfleet-eureka-server:8761/eureka/
+      - MANAGEMENT_ZIPKIN_TRACING_ENDPOINT=http://hackfleet-zipkin:9411/api/v2/spans
+    depends_on:
+      - hackfleet-postgres-campaign
+      - hackfleet-rabbitmq
+      - hackfleet-eureka-server
+      - hackfleet-zipkin
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8082/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    restart: unless-stopped
+
+  hackfleet-donation-service:
+    build:
+      context: ./services/donation-service
+      dockerfile: Dockerfile
+    container_name: hackfleet-donation-service
+    ports:
+      - "8085:8085"
+    networks:
+      - hackfleet-network
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://hackfleet-postgres-donation:5432/donationdb
+      - SPRING_RABBITMQ_HOST=hackfleet-rabbitmq
+      - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://hackfleet-eureka-server:8761/eureka/
+      - MANAGEMENT_ZIPKIN_TRACING_ENDPOINT=http://hackfleet-zipkin:9411/api/v2/spans
+    depends_on:
+      - hackfleet-postgres-donation
+      - hackfleet-rabbitmq
+      - hackfleet-eureka-server
+      - hackfleet-zipkin
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8085/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    restart: unless-stopped
+
+  hackfleet-payment-service:
+    build:
+      context: ./services/payment-service
+      dockerfile: Dockerfile
+    container_name: hackfleet-payment-service
+    ports:
+      - "8086:8086"
+    networks:
+      - hackfleet-network
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+      - SPRING_RABBITMQ_HOST=hackfleet-rabbitmq
+      - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://hackfleet-eureka-server:8761/eureka/
+      - MANAGEMENT_ZIPKIN_TRACING_ENDPOINT=http://hackfleet-zipkin:9411/api/v2/spans
+    depends_on:
+      - hackfleet-rabbitmq
+      - hackfleet-eureka-server
+      - hackfleet-zipkin
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8086/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    restart: unless-stopped
+
+  hackfleet-banking-service:
+    build:
+      context: ./services/banking-service
+      dockerfile: Dockerfile
+    container_name: hackfleet-banking-service
+    ports:
+      - "8091:8091"
+    networks:
+      - hackfleet-network
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://hackfleet-postgres-banking:5432/bankingdb
+      - SPRING_RABBITMQ_HOST=hackfleet-rabbitmq
+      - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://hackfleet-eureka-server:8761/eureka/
+      - MANAGEMENT_ZIPKIN_TRACING_ENDPOINT=http://hackfleet-zipkin:9411/api/v2/spans
+    depends_on:
+      - hackfleet-postgres-banking
+      - hackfleet-rabbitmq
+      - hackfleet-eureka-server
+      - hackfleet-zipkin
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8091/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    restart: unless-stopped
+
+  hackfleet-analytics-service:
+    build:
+      context: ./services/analytics-service
+      dockerfile: Dockerfile
+    container_name: hackfleet-analytics-service
+    ports:
+      - "8087:8087"
+    networks:
+      - hackfleet-network
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+      - SPRING_DATA_MONGODB_URI=mongodb://admin:admin@hackfleet-mongodb:27017/analyticsdb?authSource=admin
+      - SPRING_RABBITMQ_HOST=hackfleet-rabbitmq
+      - SPRING_DATA_REDIS_HOST=hackfleet-redis
+      - SPRING_DATA_REDIS_PORT=6379
+      - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://hackfleet-eureka-server:8761/eureka/
+      - MANAGEMENT_ZIPKIN_TRACING_ENDPOINT=http://hackfleet-zipkin:9411/api/v2/spans
+    depends_on:
+      - hackfleet-mongodb
+      - hackfleet-redis
+      - hackfleet-rabbitmq
+      - hackfleet-eureka-server
+      - hackfleet-zipkin
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8087/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    restart: unless-stopped
+
+  hackfleet-auth-service:
+    build:
+      context: ./services/auth-service
+      dockerfile: Dockerfile
+    container_name: hackfleet-auth-service
+    ports:
+      - "8089:8089"
+    networks:
+      - hackfleet-network
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://hackfleet-postgres-auth:5432/authdb
+      - JWT_SECRET=${JWT_SECRET:-supersecretjwtkeythatshouldbeinenv}
+      - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://hackfleet-eureka-server:8761/eureka/
+      - MANAGEMENT_ZIPKIN_TRACING_ENDPOINT=http://hackfleet-zipkin:9411/api/v2/spans
+    depends_on:
+      - hackfleet-postgres-auth
+      - hackfleet-eureka-server
+      - hackfleet-zipkin
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8089/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    restart: unless-stopped
+
+  hackfleet-notification-service:
+    build:
+      context: ./services/notification-service
+      dockerfile: Dockerfile
+    container_name: hackfleet-notification-service
+    ports:
+      - "8088:8088"
+    networks:
+      - hackfleet-network
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+      - SPRING_RABBITMQ_HOST=hackfleet-rabbitmq
+      - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://hackfleet-eureka-server:8761/eureka/
+      - MANAGEMENT_ZIPKIN_TRACING_ENDPOINT=http://hackfleet-zipkin:9411/api/v2/spans
+    depends_on:
+      - hackfleet-rabbitmq
+      - hackfleet-eureka-server
+      - hackfleet-zipkin
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8088/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    restart: unless-stopped
+
+  # ============================================================================
+  # MONITORING - Zipkin, Prometheus, Grafana
+  # ============================================================================
+
+  hackfleet-zipkin:
+    image: openzipkin/zipkin:latest
+    container_name: hackfleet-zipkin
+    ports:
+      - "9411:9411"
+    networks:
+      - hackfleet-network
+    environment:
+      - STORAGE_TYPE=mem
+    restart: unless-stopped
+
+  hackfleet-prometheus:
+    image: prom/prometheus:latest
+    container_name: hackfleet-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      - hackfleet-prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+    networks:
+      - hackfleet-network
+    restart: unless-stopped
+
+  hackfleet-grafana:
+    image: grafana/grafana:latest
+    container_name: hackfleet-grafana
+    ports:
+      - "3000:3000"
+    volumes:
+      - hackfleet-grafana-data:/var/lib/grafana
+      - ./utilities/grafana/provisioning:/etc/grafana/provisioning
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    networks:
+      - hackfleet-network
+    depends_on:
+      - hackfleet-prometheus
+    restart: unless-stopped
+
+  # ============================================================================
+  # LOGGING - ELK Stack
+  # ============================================================================
+
+  hackfleet-elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
+    container_name: hackfleet-elasticsearch
+    ports:
+      - "9200:9200"
+      - "9300:9300"
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    volumes:
+      - hackfleet-elasticsearch-data:/usr/share/elasticsearch/data
+    networks:
+      - hackfleet-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9200/_cluster/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    restart: unless-stopped
+
+  hackfleet-logstash:
+    image: docker.elastic.co/logstash/logstash:8.11.0
+    container_name: hackfleet-logstash
+    ports:
+      - "5000:5000/tcp"
+      - "5000:5000/udp"
+      - "9600:9600"
+    environment:
+      - "LS_JAVA_OPTS=-Xmx256m -Xms256m"
+    volumes:
+      - ./utilities/logstash/pipeline:/usr/share/logstash/pipeline
+    networks:
+      - hackfleet-network
+    depends_on:
+      - hackfleet-elasticsearch
+    restart: unless-stopped
+
+  hackfleet-kibana:
+    image: docker.elastic.co/kibana/kibana:8.11.0
+    container_name: hackfleet-kibana
+    ports:
+      - "5601:5601"
+    environment:
+      - ELASTICSEARCH_HOSTS=http://hackfleet-elasticsearch:9200
+    networks:
+      - hackfleet-network
+    depends_on:
+      - hackfleet-elasticsearch
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:5601/api/status || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    restart: unless-stopped
+
+  # ============================================================================
+  # FRONTEND
+  # ============================================================================
+
+  hackfleet-frontend:
+    build:
+      context: ./services/frontend
+      dockerfile: Dockerfile
+    container_name: hackfleet-frontend
+    ports:
+      - "3001:80"
+    networks:
+      - hackfleet-network
+    depends_on:
+      - hackfleet-api-gateway
+    restart: unless-stopped

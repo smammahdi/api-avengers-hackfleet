@@ -1,0 +1,108 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    monitor: 'microservices-monitor'
+
+# Alerting configuration
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: []
+
+# Scrape configurations
+scrape_configs:
+  # Prometheus itself
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # API Gateway
+  - job_name: 'api-gateway'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['api-gateway:8080']
+        labels:
+          application: 'api-gateway'
+          environment: 'docker'
+
+  # Auth Service
+  - job_name: 'auth-service'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['auth-service:8081']
+        labels:
+          application: 'auth-service'
+          environment: 'docker'
+
+  # Campaign Service
+  - job_name: 'campaign-service'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['campaign-service:8082']
+        labels:
+          application: 'campaign-service'
+          environment: 'docker'
+
+  # Donation Service
+  - job_name: 'donation-service'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['donation-service:8083']
+        labels:
+          application: 'donation-service'
+          environment: 'docker'
+
+  # Payment Service
+  - job_name: 'payment-service'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['payment-service:8084']
+        labels:
+          application: 'payment-service'
+          environment: 'docker'
+
+  # Analytics Service
+  - job_name: 'analytics-service'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['analytics-service:8085']
+        labels:
+          application: 'analytics-service'
+          environment: 'docker'
+
+  # Notification Service
+  - job_name: 'notification-service'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['notification-service:8086']
+        labels:
+          application: 'notification-service'
+          environment: 'docker'
+
+  # Notification Service
+  - job_name: 'notification-service'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['notification-service:8087']
+        labels:
+          application: 'notification-service'
+          environment: 'docker'
+
+  # Eureka Server
+  - job_name: 'eureka-server'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['eureka-server:8761']
+        labels:
+          application: 'eureka-server'
+          environment: 'docker'
+
+  # Config Server
+  - job_name: 'config-server'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['config-server:8888']
+        labels:
+          application: 'config-server'
+          environment: 'docker'

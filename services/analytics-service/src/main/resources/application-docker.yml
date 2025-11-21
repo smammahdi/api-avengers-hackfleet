@@ -1,0 +1,43 @@
+server:
+  port: 8087
+
+spring:
+  application:
+    name: hf-analytics-service
+
+  data:
+    mongodb:
+      host: ${SPRING_DATA_MONGODB_HOST:mongodb}
+      port: ${SPRING_DATA_MONGODB_PORT:27017}
+      database: ${SPRING_DATA_MONGODB_DATABASE:analyticsdb}
+      username: ${SPRING_DATA_MONGODB_USERNAME:admin}
+      password: ${SPRING_DATA_MONGODB_PASSWORD:admin}
+      authentication-database: admin
+
+  rabbitmq:
+    host: ${SPRING_RABBITMQ_HOST:rabbitmq}
+    port: ${SPRING_RABBITMQ_PORT:5672}
+    username: ${SPRING_RABBITMQ_USERNAME:guest}
+    password: ${SPRING_RABBITMQ_PASSWORD:guest}
+
+# RabbitMQ Queue Configuration
+rabbitmq:
+  queue:
+    donation:
+      completed: donation.completed.queue
+    campaign:
+      created: campaign.created.queue
+      completed: campaign.completed.queue
+
+eureka:
+  client:
+    service-url:
+      defaultZone: ${EUREKA_CLIENT_SERVICEURL_DEFAULTZONE:http://eureka-server:8761/eureka/}
+
+# Zipkin Configuration for Docker
+management.zipkin.tracing.endpoint: ${ZIPKIN_BASE_URL:http://zipkin:9411}/api/v2/spans
+
+logging:
+  level:
+    com.careforall.analytics: INFO
+    org.springframework.data.mongodb: INFO

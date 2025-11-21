@@ -1,0 +1,79 @@
+server:
+  port: 8087
+
+spring:
+  application:
+    name: hf-analytics-service
+
+  # MongoDB Configuration
+  data:
+    mongodb:
+      host: localhost
+      port: 27017
+      database: analyticsdb
+      username: admin
+      password: admin
+      authentication-database: admin
+
+  # RabbitMQ Configuration
+  rabbitmq:
+    host: localhost
+    port: 5672
+    username: guest
+    password: guest
+    listener:
+      simple:
+        retry:
+          enabled: true
+          initial-interval: 2000
+          max-attempts: 3
+          multiplier: 2.0
+
+# RabbitMQ Queue Configuration
+rabbitmq:
+  queue:
+    donation:
+      completed: donation.completed.queue
+    campaign:
+      created: campaign.created.queue
+      completed: campaign.completed.queue
+
+# Eureka Client Configuration
+eureka:
+  client:
+    service-url:
+      defaultZone: http://localhost:8761/eureka/
+    register-with-eureka: true
+    fetch-registry: true
+  instance:
+    prefer-ip-address: true
+    instance-id: ${spring.application.name}:${spring.application.instance_id:${random.value}}
+
+# Actuator Configuration
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: always
+  metrics:
+    export:
+      prometheus:
+        enabled: true
+  tracing:
+    sampling:
+      probability: 1.0
+
+# Zipkin Configuration
+management.zipkin.tracing.endpoint: http://localhost:9411/api/v2/spans
+
+# Logging Configuration
+logging:
+  level:
+    com.careforall.analytics: INFO
+    org.springframework.data.mongodb: INFO
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} - %msg%n"
+    file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"

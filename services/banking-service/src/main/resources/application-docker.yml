@@ -1,0 +1,27 @@
+server:
+  port: 8091
+
+spring:
+  datasource:
+    url: jdbc:postgresql://banking-db:5432/bankingdb
+    username: careforall
+    password: careforall123
+
+  rabbitmq:
+    host: rabbitmq
+    port: 5672
+    username: guest
+    password: guest
+
+eureka:
+  client:
+    service-url:
+      defaultZone: http://eureka-server:8761/eureka/
+
+management:
+  tracing:
+    sampling:
+      probability: 1.0
+  zipkin:
+    tracing:
+      endpoint: http://zipkin:9411/api/v2/spans
